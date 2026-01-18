@@ -1,0 +1,20 @@
+{
+    "phone_number": "+84xxxxxxxxx",
+    "wpp_base_url": "http://your-wpp-server:21465",
+    "wpp_session": "YOUR_SESSION_NAME",
+    "wpp_secret_key": "YOUR_SECRET_KEY",
+    "window_title": "Chrome",
+    "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+    "regions": [
+        {
+            "name": "Vùng 1",
+            "x": 100,
+            "y": 100,
+            "width": 50,
+            "height": 20
+        }
+    ],
+    "interval_minutes": 60,
+    "capture_delay_seconds": 1,
+    "max_retention_days": 3
+}

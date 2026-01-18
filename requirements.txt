@@ -1,0 +1,7 @@
+pyautogui
+pytesseract
+Pillow
+requests
+schedule
+pygetwindow
+flask
