@@ -81,7 +81,11 @@ class WPPConnectClient:
                 log("Cannot proceed without a valid token.", "ERROR")
                 return False
 
-        chat_id = f"{phone_number.replace('+', '')}"
+        is_group = "@g.us" in phone_number
+        if is_group:
+            chat_id = phone_number
+        else:
+            chat_id = f"{phone_number.replace('+', '')}"
         
         try:
             with open(file_path, "rb") as image_file:
@@ -96,7 +100,8 @@ class WPPConnectClient:
         payload = {
             "phone": chat_id,
             "base64": base64_data,
-            "caption": caption
+            "caption": caption,
+            "isGroup": is_group
         }
         
         log(f"Sending image to {phone_number}...", "ACTION")
