@@ -1,102 +1,82 @@
-import json
 import os
+import json
 import time
 import base64
 import requests
-import pyautogui
-import pytesseract
-import pygetwindow as gw
-from PIL import Image
 import schedule
-from datetime import datetime
-import sys
+import pyautogui
+import pygetwindow as gw
+import numpy as np
+from PIL import Image, ImageEnhance, ImageOps
+import easyocr
+from datetime import datetime, timedelta
 
-# --- CONFIGURATION ---
-def load_config():
-    with open('config.json', 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-CONFIG = load_config()
-SCREENSHOT_DIR = "screenshots"
-
-# Ensure screenshot directory exists
+# --- Configuration & Setup ---
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
+SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 if not os.path.exists(SCREENSHOT_DIR):
     os.makedirs(SCREENSHOT_DIR)
 
-# Setup Tesseract
-TESS_PATH = os.path.normpath(CONFIG['tesseract_path'])
-pytesseract.tesseract_cmd = TESS_PATH
-TESS_DIR = os.path.dirname(TESS_PATH)
-if os.path.exists(TESS_DIR):
-    os.environ['PATH'] += os.pathsep + TESS_DIR
+def load_config():
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
+    with open(CONFIG_PATH, 'r') as f:
+        return json.load(f)
+
+CONFIG = load_config()
 
 
-def log(msg, level="INFO"):
-    """Professional logging with emojis and timestamps."""
+# --- Logging Helper ---
+def log(message, type="INFO"):
+    icons = {"INFO": "ℹ️", "SUCCESS": "✅", "ERROR": "❌", "ACTION": "🚀", "DEBUG": "🔍", "OCR": "👁️"}
     timestamp = datetime.now().strftime("%H:%M:%S")
-    emoji = "ℹ️"
-    if level == "SUCCESS": emoji = "✅"
-    elif level == "ERROR": emoji = "❌"
-    elif level == "DEBUG": emoji = "🛠️"
-    elif level == "ACTION": emoji = "🚀"
-    elif level == "OCR": emoji = "🔍"
-    
-    print(f"[{timestamp}] {emoji} {msg}")
+    print(f"[{timestamp}] {icons.get(type, '🔹')} {message}")
 
+# --- Initialize OCR Engine ---
+log("Initializing EasyOCR Reader (English)...", "OCR")
+READER = easyocr.Reader(['en'], gpu=False) # Keep gpu=False for compatibility
+
+# --- WPPConnect Client ---
 class WPPConnectClient:
-    """Handles communication with self-hosted WPPConnect-Server."""
-    def __init__(self, base_url, session, secret_key=""):
+    def __init__(self, base_url, session, secret_key):
         self.base_url = base_url.rstrip('/')
         self.session = session
         self.secret_key = secret_key
         self.token = None
-        self.headers = {
-            "Content-Type": "application/json"
-        }
+        self.headers = {"Content-Type": "application/json"}
 
     def _generate_token(self):
-        """Generates an access token using the secret key."""
-        if not self.secret_key:
-            return False
-            
+        log(f"Generating access token for session: {self.session}...", "DEBUG")
         url = f"{self.base_url}/api/{self.session}/{self.secret_key}/generate-token"
-        log(f"Generating token for session '{self.session}'...", "DEBUG")
         try:
-            response = requests.post(url, timeout=15)
+            response = requests.post(url, timeout=20)
             if response.status_code in [200, 201]:
-                data = response.json()
-                self.token = data.get('token')
-                if self.token:
-                    self.headers["Authorization"] = f"Bearer {self.token}"
-                    return True
-            log(f"Token generation failed: {response.status_code}", "ERROR")
+                self.token = response.json().get('token')
+                self.headers["Authorization"] = f"Bearer {self.token}"
+                log("Token generated successfully.", "SUCCESS")
+                return True
+            log(f"Failed to generate token: {response.text}", "ERROR")
         except Exception as e:
-            log(f"Token exception: {e}", "ERROR")
+            log(f"Token generation error: {e}", "ERROR")
         return False
 
-    def send_image_file(self, phone_number, file_path, caption):
-        """Sends an image file via WPPConnect API by converting to Base64."""
+    def send_image(self, phone_number, file_path, caption=""):
         if not self.token:
             if not self._generate_token():
-                log("Cannot proceed without a valid token.", "ERROR")
                 return False
 
         is_group = "@g.us" in phone_number
-        if is_group:
-            chat_id = phone_number
-        else:
-            chat_id = f"{phone_number.replace('+', '')}"
+        chat_id = phone_number if is_group else f"{phone_number.replace('+', '')}"
         
         try:
-            with open(file_path, "rb") as image_file:
-                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                base64_data = f"data:image/png;base64,{base64_image}"
+            with open(file_path, "rb") as img:
+                b64 = base64.b64encode(img.read()).decode('utf-8')
+                base64_data = f"data:image/png;base64,{b64}"
         except Exception as e:
-            log(f"Error encoding image: {e}", "ERROR")
+            log(f"Image encoding error: {e}", "ERROR")
             return False
 
         url = f"{self.base_url}/api/{self.session}/send-image"
-        
         payload = {
             "phone": chat_id,
             "base64": base64_data,
@@ -106,29 +86,23 @@ class WPPConnectClient:
         
         log(f"Sending image to {phone_number}...", "ACTION")
         try:
-            response = requests.post(url, headers=self.headers, json=payload, timeout=45)
-            
-            if response.status_code == 401:
-                log("Token expired. Refreshing...", "DEBUG")
+            res = requests.post(url, headers=self.headers, json=payload, timeout=45)
+            if res.status_code == 401: # Token might be expired
                 if self._generate_token():
-                    response = requests.post(url, headers=self.headers, json=payload, timeout=45)
-
-            if response.status_code in [200, 201]:
+                    res = requests.post(url, headers=self.headers, json=payload, timeout=45)
+            
+            if res.status_code in [200, 201]:
                 log("Message sent successfully!", "SUCCESS")
                 return True
-            else:
-                log(f"Send failed: {response.status_code} - {response.text}", "ERROR")
+            log(f"Send failed: {res.status_code} - {res.text}", "ERROR")
         except Exception as e:
             log(f"WPPConnect exception: {e}", "ERROR")
         return False
 
-
+# --- Automation Functions ---
 def activate_window(title_substring):
-    """Finds and activates a window with a much more robust sequence."""
+    if not title_substring: return True
     try:
-        if not title_substring:
-            return True
-            
         windows = gw.getWindowsWithTitle(title_substring)
         if not windows:
             log(f"Window '{title_substring}' not found.", "ERROR")
@@ -136,162 +110,115 @@ def activate_window(title_substring):
         
         target = windows[0]
         log(f"Focusing window: '{target.title}'", "ACTION")
-        
-        if target.isMinimized:
-            target.restore()
-        
+        if target.isMinimized: target.restore()
         try:
             target.show()
             target.activate()
-        except Exception:
-            pyautogui.press('alt') 
+        except:
+            pyautogui.press('alt')
             target.activate()
-            
-        time.sleep(1.5) 
+        time.sleep(1.5)
         return True
     except Exception as e:
         log(f"Activation error: {e}", "ERROR")
         return False
 
-
-def capture_screen():
-    """Captures the full screen after activating the target window."""
-    target_title = CONFIG.get('window_title', '')
-    if target_title:
-        if not activate_window(target_title):
-            log("Capturing current screen (window focus failed).", "DEBUG")
-    
-    filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    filepath = os.path.join(SCREENSHOT_DIR, filename)
-    
-    delay = CONFIG.get('capture_delay_seconds', 1)
-    if delay > 0:
-        time.sleep(delay)
-    
-    screenshot = pyautogui.screenshot()
-    screenshot.save(filepath)
-    log(f"Screenshot saved: {filepath}", "SUCCESS")
-    return screenshot, filepath
-
-
 def perform_ocr(screenshot, timestamp_str):
-    """Extracts text from defined regions with 3x upscale and underline removal."""
+    """
+    EasyOCR Implementation: Uses deep learning to recognize numbers.
+    Significant improvement over Tesseract for small decimals and thin fonts.
+    """
     results = []
-    log("Starting OCR processing...", "OCR")
+    log("Starting EasyOCR Numeric Analysis...", "OCR")
     
     for region in CONFIG['regions']:
-        x, y, w, h = region['x'], region['y'], region['width'], region['height']
-        roi = screenshot.crop((x, y, x + w, y + h))
+        name, x, y, w, h = region['name'], region['x'], region['y'], region['width'], region['height']
         
-        if h > 5:
-            roi = roi.crop((0, 0, w, h - 3)) 
-            new_h = h - 3
-        else:
-            new_h = h
-
-        processed = roi.resize((w * 3, new_h * 3), Image.Resampling.LANCZOS)
+        # 1. Take initial crop
+        roi_pil = screenshot.crop((x, y, x + w, y + h))
         
-        debug_name = f"debug_{region['name'].replace(' ', '_')}_{timestamp_str}.png"
+        # 2. Convert to Grayscale & 3x Upscale
+        # EasyOCR works best with slightly upscaled but clear images.
+        gray_pil = roi_pil.convert('L')
+        final_pil = gray_pil.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
+        
+        # 3. Contrast Enhancement
+        enhancer = ImageEnhance.Contrast(final_pil)
+        final_pil = enhancer.enhance(2.5)
+        
+        # 4. Save debug
+        debug_name = f"debug_{name.replace(' ', '_')}_{timestamp_str}.png"
         debug_path = os.path.join(SCREENSHOT_DIR, debug_name)
-        processed.save(debug_path)
+        final_pil.save(debug_path)
         
-        custom_config = '--oem 3 --psm 7'
-        text = pytesseract.image_to_string(processed, lang='eng+vie', config=custom_config).strip()
-        text = text.replace(' ', '')
+        # 5. Convert to format EasyOCR expects (numpy array)
+        img_np = np.array(final_pil)
+        
+        # 6. EasyOCR Recognition
+        # detail=0 returns only the detected text strings
+        # allowlist restricts recognition to numeric/decimal chars
+        ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789.')
+        
+        # Join results and cleanup
+        text = "".join(ocr_results).strip()
+        text = text.replace(' ', '').replace(',', '.')
              
-        log(f"OCR Result [{region['name']}]: {text}", "OCR")
-        results.append(f"- {region['name']}: {text}")
+        log(f"OCR Result [{name}]: {text}", "OCR")
+        results.append(f"- {name}: {text}")
     
     return "\n".join(results)
 
-
-def cleanup_old_files():
-    """Deletes files in SCREENSHOT_DIR older than X days."""
-    retention_days = CONFIG.get('max_retention_days', 3)
-    
-    now = time.time()
-    cutoff = now - (retention_days * 86400)
-    
+def cleanup_old_screenshots():
+    days = CONFIG.get('max_retention_days', 3)
+    cutoff = datetime.now() - timedelta(days=days)
+    log(f"Cleaning images older than {days} days...", "DEBUG")
     count = 0
+    for f in os.listdir(SCREENSHOT_DIR):
+        file_path = os.path.join(SCREENSHOT_DIR, f)
+        if os.path.getmtime(file_path) < cutoff.timestamp():
+            os.remove(file_path)
+            count += 1
+    if count > 0: log(f"Deleted {count} old screenshots.", "SUCCESS")
+
+def job(is_test=False):
+    global CONFIG
+    log("="*40, "INFO")
+    log("Starting scheduled job...", "ACTION")
+    
     try:
-        if os.path.exists(SCREENSHOT_DIR):
-            for filename in os.listdir(SCREENSHOT_DIR):
-                filepath = os.path.join(SCREENSHOT_DIR, filename)
-                if os.path.isfile(filepath):
-                    file_mtime = os.path.getmtime(filepath)
-                    if file_mtime < cutoff:
-                        os.remove(filepath)
-                        count += 1
-        if count > 0:
-            log(f"Cleanup: Removed {count} old files.", "DEBUG")
-    except Exception as e:
-        log(f"Cleanup error: {e}", "ERROR")
-
-
-def job():
-    """The main task to be executed periodically."""
-    print("\n" + "═"*50)
-    log(f"BOT TASK STARTED", "ACTION")
-    
-    cfg = load_config()
-    cleanup_old_files()
-
-    img, path = capture_screen()
-    timestamp_file = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamp_msg = datetime.now().strftime('%H:%M %d/%m/%Y')
-    
-    info_text = perform_ocr(img, timestamp_file)
-    content = f"Thông báo tự động ({timestamp_msg}):\n{info_text}"
-    
-    client = WPPConnectClient(
-        cfg['wpp_base_url'], 
-        cfg['wpp_session'], 
-        cfg['wpp_secret_key']
-    )
-    client.send_image_file(cfg['phone_number'], path, content)
-    log("BOT TASK COMPLETED", "SUCCESS")
-    print("═"*50 + "\n")
-
-
-def start_app():
-    """Starts the scheduler."""
-    if not os.path.exists(TESS_PATH):
-        log(f"Tesseract not found at {TESS_PATH}", "ERROR")
-        return
-
-    # Job runs every hour at the 5th minute (e.g. 10:05, 11:05)
-    schedule.every().hour.at(":05").do(job)
-    
-    print("\n" + "🚀 " + "WhatsApp Screenshot Bot is Running".center(46) + " 🚀")
-    print("─"*50)
-    log("Schedule: Every hour at :05")
-    log(f"Target: '{CONFIG.get('window_title', 'None')}'")
-    log("Press CTRL+C to stop")
-    print("─"*50)
-    
-    # Run once immediately if you want to test, or wait for the next :05
-    # job() 
-    
-    while True:
-        schedule.run_pending()
-        time.sleep(10)
-
-
-if __name__ == "__main__":
-    # Check for test mode
-    if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        print("\n" + "🧪 " + "Running in TEST MODE".center(46) + " 🧪")
-        print("─"*50)
-        try:
-            job()
-            log("Test completed successfully.", "SUCCESS")
-        except Exception as e:
-            log(f"Test failed: {e}", "ERROR")
-        sys.exit(0)
+        CONFIG = load_config()
+        cleanup_old_screenshots()
         
-    try:
-        start_app()
-    except KeyboardInterrupt:
-        print("\n" + "─"*50)
-        log("Bot stopped by user.", "INFO")
-        print("─"*50)
+        if activate_window(CONFIG.get('window_title')):
+            time.sleep(CONFIG.get('capture_delay_seconds', 1))
+            screenshot = pyautogui.screenshot()
+            
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            main_ss_path = os.path.join(SCREENSHOT_DIR, f"full_{ts}.png")
+            screenshot.save(main_ss_path)
+            
+            ocr_text = perform_ocr(screenshot, ts)
+            caption = f"📊 Báo cáo tự động ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n{ocr_text}"
+            
+            # Always send the report, even in test mode
+            client = WPPConnectClient(CONFIG['wpp_base_url'], CONFIG['wpp_session'], CONFIG['wpp_secret_key'])
+            client.send_image(CONFIG['phone_number'], main_ss_path, caption)
+            
+            if is_test:
+                log(f"Test result sent via WhatsApp:\n{caption}", "DEBUG")
+            
+    except Exception as e:
+        log(f"Job failed: {e}", "ERROR")
+    log("Job finished.", "INFO")
+
+# --- Main Logic ---
+if __name__ == "__main__":
+    import sys
+    if "--test" in sys.argv:
+        job(is_test=True)
+    else:
+        log(f"Bot started. Scheduled at XX:05 every hour.", "SUCCESS")
+        schedule.every().hour.at(":05").do(job)
+        while True:
+            schedule.run_pending()
+            time.sleep(30)

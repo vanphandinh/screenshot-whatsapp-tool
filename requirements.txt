@@ -1,7 +1,8 @@
 pyautogui
-pytesseract
+easyocr
 Pillow
 requests
 schedule
 pygetwindow
 flask
+numpy
