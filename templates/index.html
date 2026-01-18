@@ -172,6 +172,8 @@
             const secret_key = document.getElementById('secretKey').value;
             const timestamp = new Date().getTime();
 
+            if (!session || !base_url) return;
+
             try {
                 // Check Status with cache-busting
                 const statusRes = await fetch(`/api/session/status?session=${session}&base_url=${base_url}&secret_key=${secret_key}&t=${timestamp}`);
@@ -212,7 +214,16 @@
                 console.error('Polling error:', e);
             }
         }
+
+        // Auto-start check on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const session = document.getElementById('sessionName').value;
+            const base_url = document.getElementById('baseUrl').value;
+            if (session && base_url) {
+                console.log('Auto-checking status for:', session);
+                startPollingStatus();
+            }
+        });
     </script>
 </body>
-
 </html>

@@ -1,6 +1,6 @@
 {
     "phone_number": "+84xxxxxxxxx",
-    "wpp_base_url": "http://your-wpp-server:21465",
+    "wpp_base_url": "https://your-wpp-server:21465",
     "wpp_session": "YOUR_SESSION_NAME",
     "wpp_secret_key": "YOUR_SECRET_KEY",
     "window_title": "Chrome",
@@ -14,7 +14,6 @@
             "height": 20
         }
     ],
-    "interval_minutes": 60,
     "capture_delay_seconds": 1,
     "max_retention_days": 3
 }

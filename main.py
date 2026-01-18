@@ -9,6 +9,7 @@ import pygetwindow as gw
 from PIL import Image
 import schedule
 from datetime import datetime
+import sys
 
 # --- CONFIGURATION ---
 def load_config():
@@ -253,17 +254,18 @@ def start_app():
         log(f"Tesseract not found at {TESS_PATH}", "ERROR")
         return
 
-    interval = CONFIG.get('interval_minutes', 60)
-    schedule.every(interval).minutes.do(job)
+    # Job runs every hour at the 5th minute (e.g. 10:05, 11:05)
+    schedule.every().hour.at(":05").do(job)
     
     print("\n" + "🚀 " + "WhatsApp Screenshot Bot is Running".center(46) + " 🚀")
     print("─"*50)
-    log(f"Interval: {interval} minutes")
+    log("Schedule: Every hour at :05")
     log(f"Target: '{CONFIG.get('window_title', 'None')}'")
     log("Press CTRL+C to stop")
     print("─"*50)
     
-    job() 
+    # Run once immediately if you want to test, or wait for the next :05
+    # job() 
     
     while True:
         schedule.run_pending()
@@ -271,6 +273,17 @@ def start_app():
 
 
 if __name__ == "__main__":
+    # Check for test mode
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        print("\n" + "🧪 " + "Running in TEST MODE".center(46) + " 🧪")
+        print("─"*50)
+        try:
+            job()
+            log("Test completed successfully.", "SUCCESS")
+        except Exception as e:
+            log(f"Test failed: {e}", "ERROR")
+        sys.exit(0)
+        
     try:
         start_app()
     except KeyboardInterrupt:
