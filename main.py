@@ -127,8 +127,9 @@ def perform_ocr(screenshot, timestamp_str):
     """
     EasyOCR Implementation: Uses deep learning to recognize numbers.
     Significant improvement over Tesseract for small decimals and thin fonts.
+    Returns a dictionary of {region_name: recognized_text}.
     """
-    results = []
+    results = {}
     log("Starting EasyOCR Numeric Analysis...", "OCR")
     
     for region in CONFIG['regions']:
@@ -138,7 +139,6 @@ def perform_ocr(screenshot, timestamp_str):
         roi_pil = screenshot.crop((x, y, x + w, y + h))
         
         # 2. Convert to Grayscale & 3x Upscale
-        # EasyOCR works best with slightly upscaled but clear images.
         gray_pil = roi_pil.convert('L')
         final_pil = gray_pil.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
         
@@ -155,8 +155,6 @@ def perform_ocr(screenshot, timestamp_str):
         img_np = np.array(final_pil)
         
         # 6. EasyOCR Recognition
-        # detail=0 returns only the detected text strings
-        # allowlist restricts recognition to numeric/decimal chars
         ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789.')
         
         # Join results and cleanup
@@ -164,9 +162,9 @@ def perform_ocr(screenshot, timestamp_str):
         text = text.replace(' ', '').replace(',', '.')
              
         log(f"OCR Result [{name}]: {text}", "OCR")
-        results.append(f"- {name}: {text}")
+        results[name] = text
     
-    return "\n".join(results)
+    return results
 
 def cleanup_old_screenshots():
     days = CONFIG.get('max_retention_days', 3)
@@ -197,8 +195,18 @@ def job(is_test=False):
             main_ss_path = os.path.join(SCREENSHOT_DIR, f"full_{ts}.png")
             screenshot.save(main_ss_path)
             
-            ocr_text = perform_ocr(screenshot, ts)
-            caption = f"📊 Báo cáo tự động ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n{ocr_text}"
+            ocr_res = perform_ocr(screenshot, ts)
+            
+            # Format custom message
+            dc = ocr_res.get("DC", "N/A")
+            aws = ocr_res.get("AWS", "N/A")
+            tap = ocr_res.get("TAP", "N/A")
+            
+            caption = (
+                f"BC BLĐ: Hiện tại {dc} TB đang hoạt động, "
+                f"tốc độ gió {aws} m/s, "
+                f"công suất phát {tap} MW"
+            )
             
             # Always send the report, even in test mode
             client = WPPConnectClient(CONFIG['wpp_base_url'], CONFIG['wpp_session'], CONFIG['wpp_secret_key'])
