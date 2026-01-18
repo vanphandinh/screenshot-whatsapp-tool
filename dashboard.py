@@ -136,6 +136,39 @@ def get_qr():
         print(f"DEBUG: QR exception: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
 
+@app.route('/api/session/logout', methods=['POST'])
+def logout_session():
+    data = request.json
+    session = data.get('session')
+    base_url = data.get('base_url', '').rstrip('/')
+    secret_key = data.get('secret_key', '')
+
+    if not session or not base_url:
+        return jsonify({"success": False, "message": "Missing parameters"}), 400
+
+    token = get_access_token(base_url, session, secret_key)
+    
+    url = f"{base_url}/api/{session}/logout-session"
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    print(f"DEBUG: Logging out session '{session}' at {url}")
+    try:
+        response = requests.post(url, headers=headers, timeout=10)
+        # Clear token from cache on logout
+        if session in TOKEN_CACHE:
+            del TOKEN_CACHE[session]
+        
+        # Even if 404/401, we want to return success to the dashboard so it can proceed with restart
+        if response.status_code in [200, 201, 404, 401]:
+            return jsonify({"success": True, "message": "Session closed or already gone"}), 200
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        print(f"DEBUG: Logout error (ignoring for refresh): {e}")
+        # Return success anyway to allow refresh-cycle to continue
+        return jsonify({"success": True, "message": "Proceeding despite error"}), 200
+
 @app.route('/api/save-config', methods=['POST'])
 def save_config_api():
     data = request.json

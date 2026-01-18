@@ -94,6 +94,10 @@
                         class="w-full bg-blue-600 hover:bg-blue-700 transition-colors py-2 rounded-lg font-semibold">
                         Khởi Tạo Session
                     </button>
+                    <button id="logoutBtn" onclick="logoutSession()"
+                        class="w-full bg-red-600 hover:bg-red-700 transition-colors py-2 rounded-lg font-semibold hidden">
+                        Đăng Xuất Session
+                    </button>
                 </div>
             </div>
 
@@ -142,28 +146,40 @@
             const base_url = document.getElementById('baseUrl').value;
             const secret_key = document.getElementById('secretKey').value;
 
-            // Reset UI for restart
+            // Reset UI for start
             document.getElementById('statusText').innerText = 'Đang khởi tạo...';
             document.getElementById('qrContainer').classList.add('hidden');
             document.getElementById('loadingPlaceholder').classList.remove('hidden');
             document.getElementById('loadingPlaceholder').innerText = 'Đang tạo mã QR...';
 
-            const response = await fetch('/api/session/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session, base_url, secret_key })
-            });
+            try {
+                const response = await fetch('/api/session/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session, base_url, secret_key })
+                });
 
-            const result = await response.json();
-            console.log('Start Result:', result);
+                const result = await response.json();
+                console.log('Start Result:', result);
 
-            startPollingStatus();
+                startPollingStatus();
+            } catch (e) {
+                console.error('Start error:', e);
+                document.getElementById('statusText').innerText = 'Lỗi khởi tạo';
+            }
         }
 
         function startPollingStatus() {
             if (pollingInterval) clearInterval(pollingInterval);
             poll();
             pollingInterval = setInterval(poll, 3000);
+        }
+
+        function stopPollingStatus() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
         }
 
         async function poll() {
@@ -177,15 +193,28 @@
             try {
                 // Check Status with cache-busting
                 const statusRes = await fetch(`/api/session/status?session=${session}&base_url=${base_url}&secret_key=${secret_key}&t=${timestamp}`);
-                const statusData = await statusRes.json();
 
+                if (statusRes.status === 404 || statusRes.status === 401) {
+                    // Session not found or Unauthorized (likely token/session gone)
+                    const statusText = document.getElementById('statusText');
+                    statusText.innerText = 'Chưa khởi tạo';
+                    statusText.className = 'ml-2 font-medium text-slate-300';
+                    document.getElementById('statusDot').className = 'status-dot bg-slate-500';
+                    document.getElementById('logoutBtn').classList.add('hidden');
+                    return;
+                }
+
+                const statusData = await statusRes.json();
                 const statusText = document.getElementById('statusText');
                 const statusDot = document.getElementById('statusDot');
                 const qrContainer = document.getElementById('qrContainer');
                 const placeholder = document.getElementById('loadingPlaceholder');
                 const instruction = document.getElementById('instruction');
+                const logoutBtn = document.getElementById('logoutBtn');
 
-                if (statusData.status === 'CONNECTED' || statusData.state === 'CONNECTED') {
+                const currentState = statusData.status || statusData.state || statusData.statusSession;
+
+                if (currentState === 'CONNECTED') {
                     statusText.innerText = 'Đã Kết Nối';
                     statusText.className = 'ml-2 font-medium text-emerald-400';
                     statusDot.className = 'status-dot pulse-green';
@@ -193,13 +222,19 @@
                     placeholder.classList.remove('hidden');
                     placeholder.innerText = '✓ Đã Kết Nối';
                     instruction.innerText = 'Tài khoản của bạn đã sẵn sàng!';
-                    clearInterval(pollingInterval);
-                } else {
+                    logoutBtn.classList.remove('hidden');
+                    stopPollingStatus();
+                } else if (currentState === 'INITIALIZING' || currentState === 'STARTING') {
+                    statusText.innerText = 'Đang khởi tạo...';
+                    statusDot.className = 'status-dot bg-blue-500';
+                    logoutBtn.classList.add('hidden');
+                } else if (currentState === 'QRCODE' || currentState === 'DISCONNECTED') {
                     statusText.innerText = 'Đang chờ quét mã...';
                     statusDot.className = 'status-dot bg-yellow-500';
+                    logoutBtn.classList.add('hidden');
 
                     // Fetch QR
-                    const qrRes = await fetch(`/api/session/qr?session=${session}&base_url=${base_url}&secret_key=${secret_key}`);
+                    const qrRes = await fetch(`/api/session/qr?session=${session}&base_url=${base_url}&secret_key=${secret_key}&t=${timestamp}`);
                     const qrData = await qrRes.json();
 
                     if (qrData.qrcode || qrData.base64) {
@@ -209,9 +244,51 @@
                         placeholder.classList.add('hidden');
                         instruction.innerText = 'Hãy quét mã QR bằng WhatsApp trên điện thoại';
                     }
+                } else {
+                    // Other states (CLOSED, etc.)
+                    statusText.innerText = 'Chưa kết nối (' + currentState + ')';
+                    statusText.className = 'ml-2 font-medium text-slate-300';
+                    statusDot.className = 'status-dot bg-slate-500';
+                    logoutBtn.classList.add('hidden');
                 }
             } catch (e) {
                 console.error('Polling error:', e);
+            }
+        }
+
+        async function logoutSession() {
+            if (!confirm('Bạn có chắc chắn muốn đăng xuất và đóng session này?')) return;
+
+            const session = document.getElementById('sessionName').value;
+            const base_url = document.getElementById('baseUrl').value;
+            const secret_key = document.getElementById('secretKey').value;
+
+            try {
+                stopPollingStatus();
+
+                const response = await fetch('/api/session/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session, base_url, secret_key })
+                });
+
+                const result = await response.json();
+                console.log('Logout Result:', result);
+
+                // Reset UI
+                document.getElementById('statusText').innerText = 'Đã đăng xuất';
+                document.getElementById('statusText').className = 'ml-2 font-medium text-slate-300';
+                document.getElementById('statusDot').className = 'status-dot bg-slate-500';
+                document.getElementById('logoutBtn').classList.add('hidden');
+                document.getElementById('qrContainer').classList.add('hidden');
+                document.getElementById('loadingPlaceholder').classList.remove('hidden');
+                document.getElementById('loadingPlaceholder').innerText = 'Chưa có mã QR';
+                document.getElementById('instruction').innerText = 'Nhập thông tin và nhấn "Khởi Tạo" để lấy mã QR';
+
+                alert('Đã đăng xuất thành công!');
+            } catch (e) {
+                console.error('Logout error:', e);
+                alert('Có lỗi khi đăng xuất: ' + e.message);
             }
         }
 
@@ -226,4 +303,5 @@
         });
     </script>
 </body>
+
 </html>
