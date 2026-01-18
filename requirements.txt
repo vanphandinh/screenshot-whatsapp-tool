@@ -6,3 +6,5 @@ schedule
 pygetwindow
 flask
 numpy
+pip-system-certs
+certifi
