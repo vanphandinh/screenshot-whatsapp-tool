@@ -378,7 +378,7 @@ if __name__ == "__main__":
             success = job(is_test=True)
             if success:
                 break
-            log("Test run failed. Retrying in 5 minutes...", "WARNING")
+            log("Test run failed. Retrying in 10 seconds...", "WARNING")
             time.sleep(10)
     else:
         log("Bot started. Interactive setup...", "SUCCESS")
