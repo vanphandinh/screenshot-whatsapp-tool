@@ -4,10 +4,9 @@
     "wpp_session": "YOUR_SESSION_NAME",
     "wpp_secret_key": "YOUR_SECRET_KEY",
     "window_title": "Chrome",
-    "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
     "regions": [
         {
-            "name": "Logo",
+            "name": "Title",
             "x": 1984,
             "y": 485,
             "width": 34,
