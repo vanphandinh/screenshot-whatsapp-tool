@@ -126,7 +126,7 @@ def activate_window(title_substring):
 def perform_ocr(screenshot, timestamp_str):
     """
     EasyOCR Implementation with conditional allowlist:
-    - Logo region: Alphanumeric (to capture "Goldwind")
+    - Title region: Alphanumeric (to capture "Overall Index")
     - Other regions: Numeric only (0-9 and .)
     """
     results = {}
@@ -134,7 +134,7 @@ def perform_ocr(screenshot, timestamp_str):
     
     for region in CONFIG['regions']:
         name, x, y, w, h = region['name'], region['x'], region['y'], region['width'], region['height']
-        is_logo = "logo" in name.lower()
+        is_title = "title" in name.lower()
         
         # 1. Take initial crop
         roi_pil = screenshot.crop((x, y, x + w, y + h))
@@ -156,8 +156,8 @@ def perform_ocr(screenshot, timestamp_str):
         img_np = np.array(final_pil)
         
         # 6. EasyOCR Recognition with dynamic allowlist
-        if is_logo:
-            # For Logo, we allow letters to capture "Goldwind"
+        if is_title:
+            # For Title, we allow letters to capture "Overall Index"
             ocr_results = READER.readtext(img_np, detail=0)
             text = " ".join(ocr_results).strip()
         else:
@@ -203,13 +203,13 @@ def job(is_test=False):
             ocr_res = perform_ocr(screenshot, ts)
             
             # --- Validation Logic ---
-            logo_text = ocr_res.get("Logo", "").lower()
-            if "goldwind" not in logo_text:
-                log(f"Dừng gửi: Không tìm thấy 'Goldwind' trong Logo (thấy '{logo_text}').", "ERROR")
+            title_text = ocr_res.get("Title", "").lower()
+            if "overall index" not in title_text:
+                log(f"Dừng gửi: Không tìm thấy 'Overall Index' trong Title (thấy '{title_text}').", "ERROR")
                 log("Màn hình được chụp không đúng.", "ERROR")
                 return
 
-            log("Xác nhận 'Goldwind' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
+            log("Xác nhận 'Overall Index' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
 
             # Format custom message
             dc = ocr_res.get("DC", "N/A")
