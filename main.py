@@ -125,15 +125,16 @@ def activate_window(title_substring):
 
 def perform_ocr(screenshot, timestamp_str):
     """
-    EasyOCR Implementation: Uses deep learning to recognize numbers.
-    Significant improvement over Tesseract for small decimals and thin fonts.
-    Returns a dictionary of {region_name: recognized_text}.
+    EasyOCR Implementation with conditional allowlist:
+    - Logo region: Alphanumeric (to capture "Goldwind")
+    - Other regions: Numeric only (0-9 and .)
     """
     results = {}
-    log("Starting EasyOCR Numeric Analysis...", "OCR")
+    log("Starting EasyOCR Analysis...", "OCR")
     
     for region in CONFIG['regions']:
         name, x, y, w, h = region['name'], region['x'], region['y'], region['width'], region['height']
+        is_logo = "logo" in name.lower()
         
         # 1. Take initial crop
         roi_pil = screenshot.crop((x, y, x + w, y + h))
@@ -151,15 +152,19 @@ def perform_ocr(screenshot, timestamp_str):
         debug_path = os.path.join(SCREENSHOT_DIR, debug_name)
         final_pil.save(debug_path)
         
-        # 5. Convert to format EasyOCR expects (numpy array)
+        # 5. Convert to format EasyOCR expects
         img_np = np.array(final_pil)
         
-        # 6. EasyOCR Recognition
-        ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789.')
-        
-        # Join results and cleanup
-        text = "".join(ocr_results).strip()
-        text = text.replace(' ', '').replace(',', '.')
+        # 6. EasyOCR Recognition with dynamic allowlist
+        if is_logo:
+            # For Logo, we allow letters to capture "Goldwind"
+            ocr_results = READER.readtext(img_np, detail=0)
+            text = " ".join(ocr_results).strip()
+        else:
+            # For data, we restrict to numbers and dots
+            ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789.')
+            text = "".join(ocr_results).strip()
+            text = text.replace(' ', '').replace(',', '.')
              
         log(f"OCR Result [{name}]: {text}", "OCR")
         results[name] = text
@@ -197,6 +202,15 @@ def job(is_test=False):
             
             ocr_res = perform_ocr(screenshot, ts)
             
+            # --- Validation Logic ---
+            logo_text = ocr_res.get("Logo", "").lower()
+            if "goldwind" not in logo_text:
+                log(f"Dừng gửi: Không tìm thấy 'Goldwind' trong Logo (thấy '{logo_text}').", "ERROR")
+                log("Màn hình được chụp không đúng.", "ERROR")
+                return
+
+            log("Xác nhận 'Goldwind' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
+
             # Format custom message
             dc = ocr_res.get("DC", "N/A")
             aws = ocr_res.get("AWS", "N/A")

@@ -7,11 +7,32 @@
     "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
     "regions": [
         {
-            "name": "Vùng 1",
-            "x": 100,
-            "y": 100,
-            "width": 50,
-            "height": 20
+            "name": "Logo",
+            "x": 1984,
+            "y": 485,
+            "width": 34,
+            "height": 24
+        },
+        {
+            "name": "DC",
+            "x": 1984,
+            "y": 485,
+            "width": 34,
+            "height": 24
+        },
+        {
+            "name": "AWS",
+            "x": 1979,
+            "y": 622,
+            "width": 35,
+            "height": 25
+        },
+        {
+            "name": "TAP",
+            "x": 1972,
+            "y": 649,
+            "width": 42,
+            "height": 26
         }
     ],
     "capture_delay_seconds": 1,
