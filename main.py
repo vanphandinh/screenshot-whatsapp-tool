@@ -1,14 +1,22 @@
 import os
 import json
 import time
+import sys
+import random
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 import base64
 import requests
 import schedule
 import pyautogui
-import pygetwindow as gw
 import numpy as np
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance
 import easyocr
+import pygetwindow as gw
+import win32gui
+import win32con
+import win32api
+import win32process
 from datetime import datetime, timedelta
 
 # --- Configuration & Setup ---
@@ -20,8 +28,12 @@ if not os.path.exists(SCREENSHOT_DIR):
 def load_config():
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
-    with open(CONFIG_PATH, 'r') as f:
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+def save_config(config):
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=4, ensure_ascii=False)
 
 CONFIG = load_config()
 
@@ -99,29 +111,140 @@ class WPPConnectClient:
             log(f"WPPConnect exception: {e}", "ERROR")
         return False
 
+# --- Global Session State ---
+SESSION_HWND = None
+
 # --- Automation Functions ---
-def activate_window(title_substring):
+def activate_window(title_substring, keep_on_top=False):
+    global SESSION_HWND
     if not title_substring: return True
     try:
-        windows = gw.getWindowsWithTitle(title_substring)
-        if not windows:
+        # Find all matching windows
+        all_windows = gw.getWindowsWithTitle(title_substring)
+        if not all_windows:
             log(f"Window '{title_substring}' not found.", "ERROR")
+            SESSION_HWND = None
             return False
         
-        target = windows[0]
-        log(f"Focusing window: '{target.title}'", "ACTION")
-        if target.isMinimized: target.restore()
+        # Filter for valid UI windows
+        valid_candidates = []
+        for w in all_windows:
+            h = w._hWnd
+            title = win32gui.GetWindowText(h).strip()
+            if win32gui.IsWindow(h) and win32gui.IsWindowVisible(h) and title:
+                valid_candidates.append((h, title))
+        
+        if not valid_candidates:
+            log(f"No visible UI window matching '{title_substring}' found.", "ERROR")
+            SESSION_HWND = None
+            return False
+            
+        hwnd = None
+        selected_title = None
+
+        # --- UNIFIED SELECTION LOGIC ---
+        
+        # 1. Try to reuse SESSION_HWND if it's still valid
+        if SESSION_HWND:
+            matches = [v for v in valid_candidates if v[0] == SESSION_HWND]
+            if matches:
+                hwnd, selected_title = matches[0]
+                log(f"Reusing session window: '{selected_title}'", "DEBUG")
+        
+        # 2. If no session hwnd or it was lost, handle selection
+        if not hwnd:
+            if len(valid_candidates) > 1:
+                log(f"Found {len(valid_candidates)} matching windows. Please select one:", "ACTION")
+                for i, (h, t) in enumerate(valid_candidates):
+                    print(f"  [{i+1}] {t} (HWND: {h})")
+                
+                while True:
+                    try:
+                        choice = input(f"Chọn số (1-{len(valid_candidates)}): ").strip()
+                        choice_idx = int(choice) - 1
+                        if 0 <= choice_idx < len(valid_candidates):
+                            hwnd, selected_title = valid_candidates[choice_idx]
+                            break
+                        print("Số không hợp lệ.")
+                    except ValueError:
+                        print("Vui lòng nhập số.")
+            else:
+                hwnd, selected_title = valid_candidates[0]
+            
+            # Save to session for subsequent calls
+            SESSION_HWND = hwnd
+            log(f"Window locked for this session: '{selected_title}'", "SUCCESS")
+
+        log(f"Focusing window: '{selected_title}' (HWND: {hwnd})", "ACTION")
+        
+        # --- ULTIMATE ACTIVATION SEQUENCE ---
+        
+        # 1. Disable foreground lock
         try:
-            target.show()
-            target.activate()
-        except:
-            pyautogui.press('alt')
-            target.activate()
+            win32api.SystemParametersInfo(win32con.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, 
+                                          win32con.SPIF_SENDWININICHANGE | win32con.SPIF_UPDATEINIFILE)
+        except: pass
+
+        # 2. Force Show/Restore even if not perceived as iconic
+        # Some apps (like Photos) can be in a "pseudo-minimized" or background state
+        log("Triggering aggressive show/restore...", "DEBUG")
+        win32gui.ShowWindow(hwnd, win32con.SW_HIDE)
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SendMessage(hwnd, win32con.WM_SYSCOMMAND, win32con.SC_RESTORE, 0)
+        
+        # 3. Maximize
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWMAXIMIZED)
+        time.sleep(0.5)
+        
+        # 4. Force Foreground
+        def force_foreground(h):
+            try:
+                # Try standard
+                win32gui.SetForegroundWindow(h)
+                win32gui.BringWindowToTop(h)
+                return True
+            except:
+                # Try thread attachment
+                try:
+                    fore_thread = win32gui.GetWindowThreadProcessId(win32gui.GetForegroundWindow())[0]
+                    target_thread = win32gui.GetWindowThreadProcessId(h)[0]
+                    if fore_thread != target_thread:
+                        win32process.AttachThreadInput(fore_thread, target_thread, True)
+                        win32gui.SetForegroundWindow(h)
+                        win32process.AttachThreadInput(fore_thread, target_thread, False)
+                        return True
+                except: pass
+                return False
+
+        if not force_foreground(hwnd):
+            pyautogui.press('alt') # Bypasses some restrictions
+            try: win32gui.SetForegroundWindow(hwnd)
+            except: pass
+        
+        if keep_on_top:
+            # HWND_TOPMOST = -1, HWND_NOTOPMOST = -2
+            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, 
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+            log("Window set to Always on Top.", "DEBUG")
+            
         time.sleep(1.5)
         return True
     except Exception as e:
         log(f"Activation error: {e}", "ERROR")
         return False
+
+def reset_window_topmost(title_substring):
+    if not title_substring: return
+    try:
+        windows = gw.getWindowsWithTitle(title_substring)
+        if windows:
+            hwnd = windows[0]._hWnd
+            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, 
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+            log("Window topmost status reset.", "DEBUG")
+    except Exception as e:
+        log(f"Reset topmost error: {e}", "DEBUG")
 
 def perform_ocr(screenshot, timestamp_str):
     """
@@ -192,9 +315,13 @@ def job(is_test=False):
         CONFIG = load_config()
         cleanup_old_screenshots()
         
-        if activate_window(CONFIG.get('window_title')):
+        window_title = CONFIG.get('window_title')
+        if activate_window(window_title, keep_on_top=True):
             time.sleep(CONFIG.get('capture_delay_seconds', 1))
             screenshot = pyautogui.screenshot()
+            
+            # Immediately reset topmost to avoid annoying the user
+            reset_window_topmost(window_title)
             
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             main_ss_path = os.path.join(SCREENSHOT_DIR, f"full_{ts}.png")
@@ -207,7 +334,7 @@ def job(is_test=False):
             if "overall index" not in title_text:
                 log(f"Dừng gửi: Không tìm thấy 'Overall Index' trong Title (thấy '{title_text}').", "ERROR")
                 log("Màn hình được chụp không đúng.", "ERROR")
-                return
+                return False
 
             log("Xác nhận 'Overall Index' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
 
@@ -224,23 +351,74 @@ def job(is_test=False):
             
             # Always send the report, even in test mode
             client = WPPConnectClient(CONFIG['wpp_base_url'], CONFIG['wpp_session'], CONFIG['wpp_secret_key'])
-            client.send_image(CONFIG['phone_number'], main_ss_path, caption)
-            
-            if is_test:
-                log(f"Test result sent via WhatsApp:\n{caption}", "DEBUG")
+            if client.send_image(CONFIG['phone_number'], main_ss_path, caption):
+                if is_test:
+                    log(f"Test result sent via WhatsApp:\n{caption}", "DEBUG")
+                log("Job finished successfully.", "SUCCESS")
+                return True
+            else:
+                log("WhatsApp report delivery failed.", "ERROR")
+                return False
+        else:
+            log(f"Window activation failed. Skipping this capture attempt.", "ERROR")
+            return False
+
             
     except Exception as e:
         log(f"Job failed: {e}", "ERROR")
-    log("Job finished.", "INFO")
+        return False
+    
+    return False
 
 # --- Main Logic ---
 if __name__ == "__main__":
-    import sys
     if "--test" in sys.argv:
-        job(is_test=True)
-    else:
-        log(f"Bot started. Scheduled at XX:05 every hour.", "SUCCESS")
-        schedule.every().hour.at(":05").do(job)
+        log("Running in TEST mode with auto-retry...", "ACTION")
         while True:
-            schedule.run_pending()
+            success = job(is_test=True)
+            if success:
+                break
+            log("Test run failed. Retrying in 5 minutes...", "WARNING")
+            time.sleep(10)
+    else:
+        log("Bot started. Interactive setup...", "SUCCESS")
+        
+        # 1. Immediate setup: Ask user to select window
+        window_title = CONFIG.get('window_title')
+        activate_window(window_title)
+        
+        def pick_next_run(hour_offset=0, force_random=True):
+            """Picks a random minute between 0-10 for the target hour."""
+            target_time = datetime.now() + timedelta(hours=hour_offset)
+            random_minute = random.randint(0, 10)
+            return target_time.replace(minute=random_minute, second=0, microsecond=0)
+        
+        # 2. Determine first run (Random minute 0-10)
+        now = datetime.now()
+        if now.minute < 10:
+            # Pick a minute between now+1 and 10
+            start_min = now.minute + 1
+            random_minute = random.randint(start_min, 10)
+            next_run = now.replace(minute=random_minute, second=0, microsecond=0)
+        else:
+            # Too late for this hour, pick next hour (0-10)
+            next_run = pick_next_run(1)
+
+        log(f"First run scheduled at: {next_run.strftime('%H:%M:%S')}", "INFO")
+
+        while True:
+            now = datetime.now()
+            if now >= next_run:
+                success = job()
+                
+                if success:
+                    # Successful run, schedule for next hour
+                    next_run = pick_next_run(1)
+                    log(f"Success! Next scheduled run at: {next_run.strftime('%H:%M:%S')}", "SUCCESS")
+                else:
+                    # Failed (Window missing or OCR error), retry in 5 minutes
+                    next_run = now + timedelta(minutes=5)
+                    log(f"Job failed (Window missing or OCR error). Retrying in 5 minutes at: {next_run.strftime('%H:%M:%S')}", "WARNING")
+            
+            # Sleep 30 seconds between checks
             time.sleep(30)
