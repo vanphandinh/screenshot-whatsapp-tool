@@ -9,3 +9,4 @@ numpy
 pip-system-certs
 certifi
 pywin32
+pystray

@@ -1,6 +1,4 @@
 @echo off
-echo Starting WhatsApp Screenshot Bot...
 cd /d %~dp0
 call venv\Scripts\activate
-python main.py
-pause
+start "" pythonw.exe tray_wrapper.py

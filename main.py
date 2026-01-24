@@ -155,19 +155,74 @@ def activate_window(title_substring, keep_on_top=False):
         if not hwnd:
             if len(valid_candidates) > 1:
                 log(f"Found {len(valid_candidates)} matching windows. Please select one:", "ACTION")
-                for i, (h, t) in enumerate(valid_candidates):
-                    print(f"  [{i+1}] {t} (HWND: {h})")
                 
-                while True:
-                    try:
-                        choice = input(f"Chọn số (1-{len(valid_candidates)}): ").strip()
-                        choice_idx = int(choice) - 1
-                        if 0 <= choice_idx < len(valid_candidates):
-                            hwnd, selected_title = valid_candidates[choice_idx]
-                            break
-                        print("Số không hợp lệ.")
-                    except ValueError:
-                        print("Vui lòng nhập số.")
+                # Use GUI dialog for selection (works with pythonw.exe)
+                import tkinter as tk
+                from tkinter import ttk
+                
+                selected_idx = [None]  # Use list to allow modification in nested function
+                
+                def on_select():
+                    selection = listbox.curselection()
+                    if selection:
+                        selected_idx[0] = selection[0]
+                        root.destroy()
+                
+                def on_double_click(event):
+                    on_select()
+                
+                # Create selection dialog
+                root = tk.Tk()
+                root.title("Chọn cửa sổ cần chụp hình")
+                root.geometry("600x300")
+                root.resizable(False, False)
+                
+                # Center window on screen
+                root.update_idletasks()
+                x = (root.winfo_screenwidth() // 2) - (600 // 2)
+                y = (root.winfo_screenheight() // 2) - (300 // 2)
+                root.geometry(f"+{x}+{y}")
+                
+                # Make window always on top
+                root.attributes('-topmost', True)
+                
+                # Label
+                label = tk.Label(root, text=f"Tìm thấy {len(valid_candidates)} cửa sổ. Vui lòng chọn một:", 
+                                font=("Segoe UI", 10))
+                label.pack(pady=10)
+                
+                # Listbox with scrollbar
+                frame = tk.Frame(root)
+                frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+                
+                scrollbar = tk.Scrollbar(frame)
+                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                
+                listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Consolas", 9))
+                listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                scrollbar.config(command=listbox.yview)
+                
+                # Add items
+                for i, (h, t) in enumerate(valid_candidates):
+                    listbox.insert(tk.END, f"[{i+1}] {t} (HWND: {h})")
+                
+                # Select first item by default
+                listbox.selection_set(0)
+                listbox.bind('<Double-Button-1>', on_double_click)
+                
+                # Button
+                btn = tk.Button(root, text="Chọn", command=on_select, font=("Segoe UI", 10), 
+                               bg="#25D366", fg="white", padx=20, pady=5)
+                btn.pack(pady=10)
+                
+                root.mainloop()
+                
+                if selected_idx[0] is not None:
+                    hwnd, selected_title = valid_candidates[selected_idx[0]]
+                else:
+                    # User closed window without selecting, use first one
+                    hwnd, selected_title = valid_candidates[0]
+                    log("No selection made, using first window.", "WARNING")
             else:
                 hwnd, selected_title = valid_candidates[0]
             
@@ -333,7 +388,9 @@ def job(is_test=False):
             title_text = ocr_res.get("Title", "").lower()
             if "overall index" not in title_text:
                 log(f"Dừng gửi: Không tìm thấy 'Overall Index' trong Title (thấy '{title_text}').", "ERROR")
-                log("Màn hình được chụp không đúng.", "ERROR")
+                log("Màn hình được chụp không đúng. Xóa cửa sổ đã lưu để chọn lại ở lần thử sau.", "WARNING")
+                global SESSION_HWND
+                SESSION_HWND = None
                 return False
 
             log("Xác nhận 'Overall Index' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
