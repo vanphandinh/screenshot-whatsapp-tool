@@ -173,7 +173,7 @@ def activate_window(title_substring, keep_on_top=False):
                 
                 # Create selection dialog
                 root = tk.Tk()
-                root.title("Chọn cửa sổ cần chụp hình")
+                root.title("Select window to capture")
                 root.geometry("600x300")
                 root.resizable(False, False)
                 
@@ -187,7 +187,7 @@ def activate_window(title_substring, keep_on_top=False):
                 root.attributes('-topmost', True)
                 
                 # Label
-                label = tk.Label(root, text=f"Tìm thấy {len(valid_candidates)} cửa sổ. Vui lòng chọn một:", 
+                label = tk.Label(root, text=f"Found {len(valid_candidates)} windows. Please select one:", 
                                 font=("Segoe UI", 10))
                 label.pack(pady=10)
                 
@@ -211,7 +211,7 @@ def activate_window(title_substring, keep_on_top=False):
                 listbox.bind('<Double-Button-1>', on_double_click)
                 
                 # Button
-                btn = tk.Button(root, text="Chọn", command=on_select, font=("Segoe UI", 10), 
+                btn = tk.Button(root, text="Select", command=on_select, font=("Segoe UI", 10), 
                                bg="#25D366", fg="white", padx=20, pady=5)
                 btn.pack(pady=10)
                 
@@ -387,13 +387,13 @@ def job(is_test=False):
             # --- Validation Logic ---
             title_text = ocr_res.get("Title", "").lower()
             if "overall index" not in title_text:
-                log(f"Dừng gửi: Không tìm thấy 'Overall Index' trong Title (thấy '{title_text}').", "ERROR")
-                log("Màn hình được chụp không đúng. Xóa cửa sổ đã lưu để chọn lại ở lần thử sau.", "WARNING")
+                log(f"Stop sending: 'Overall Index' not found in Title (found '{title_text}').", "ERROR")
+                log("Screenshot is incorrect. Clearing saved window to reselect on next attempt.", "WARNING")
                 global SESSION_HWND
                 SESSION_HWND = None
                 return False
 
-            log("Xác nhận 'Overall Index' thành công. Tiến hành gửi báo cáo...", "SUCCESS")
+            log("'Overall Index' confirmed successfully. Proceeding to send report...", "SUCCESS")
 
             # Format custom message
             dc = ocr_res.get("DC", "N/A")

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -61,14 +61,14 @@
                 class="text-4xl md:text-5xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
                 WPPConnect Manager
             </h1>
-            <p class="text-slate-400">Khởi tạo và kết nối WhatsApp Session của bạn</p>
+            <p class="text-slate-400">Initialize and connect your WhatsApp Session</p>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <!-- Cấu hình -->
+            <!-- Configuration -->
             <div class="glass p-8">
                 <h2 class="text-xl font-semibold mb-6 flex items-center">
-                    <span class="mr-2">⚙️</span> Cấu hình Server
+                    <span class="mr-2">⚙️</span> Server Configuration
                 </h2>
                 <div class="space-y-4">
                     <div>
@@ -88,24 +88,24 @@
                     </div>
                     <button onclick="saveConfig()"
                         class="w-full bg-indigo-600 hover:bg-indigo-700 transition-colors py-2 rounded-lg font-semibold mt-4">
-                        Lưu Cấu Hình
+                        Save Configuration
                     </button>
                     <button onclick="startSession()"
                         class="w-full bg-blue-600 hover:bg-blue-700 transition-colors py-2 rounded-lg font-semibold">
-                        Khởi Tạo Session
+                        Initialize Session
                     </button>
                     <button id="logoutBtn" onclick="logoutSession()"
                         class="w-full bg-red-600 hover:bg-red-700 transition-colors py-2 rounded-lg font-semibold hidden">
-                        Đăng Xuất Session
+                        Logout Session
                     </button>
                 </div>
             </div>
 
-            <!-- Trạng thái & QR -->
+            <!-- Status & QR -->
             <div class="glass p-8 flex flex-col items-center justify-center text-center">
                 <div id="statusArea" class="mb-6">
                     <span id="statusDot" class="status-dot bg-slate-500"></span>
-                    <span id="statusText" class="ml-2 font-medium text-slate-300">Đang kiểm tra...</span>
+                    <span id="statusText" class="ml-2 font-medium text-slate-300">Checking...</span>
                 </div>
 
                 <div id="qrContainer" class="bg-white p-4 rounded-xl hidden">
@@ -114,11 +114,11 @@
 
                 <div id="loadingPlaceholder"
                     class="w-48 h-48 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 italic">
-                    Chưa có mã QR
+                    No QR code yet
                 </div>
 
                 <p id="instruction" class="mt-6 text-sm text-slate-400">
-                    Nhập thông tin và nhấn "Khởi Tạo" để lấy mã QR
+                    Enter info and press "Initialize" to get QR code
                 </p>
             </div>
         </div>
@@ -138,7 +138,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-            alert('Đã lưu cấu hình!');
+            alert('Configuration saved!');
         }
 
         async function startSession() {
@@ -147,10 +147,10 @@
             const secret_key = document.getElementById('secretKey').value;
 
             // Reset UI for start
-            document.getElementById('statusText').innerText = 'Đang khởi tạo...';
+            document.getElementById('statusText').innerText = 'Initializing...';
             document.getElementById('qrContainer').classList.add('hidden');
             document.getElementById('loadingPlaceholder').classList.remove('hidden');
-            document.getElementById('loadingPlaceholder').innerText = 'Đang tạo mã QR...';
+            document.getElementById('loadingPlaceholder').innerText = 'Generating QR code...';
 
             try {
                 const response = await fetch('/api/session/start', {
@@ -165,7 +165,7 @@
                 startPollingStatus();
             } catch (e) {
                 console.error('Start error:', e);
-                document.getElementById('statusText').innerText = 'Lỗi khởi tạo';
+                document.getElementById('statusText').innerText = 'Init Error';
             }
         }
 
@@ -197,7 +197,7 @@
                 if (statusRes.status === 404 || statusRes.status === 401) {
                     // Session not found or Unauthorized (likely token/session gone)
                     const statusText = document.getElementById('statusText');
-                    statusText.innerText = 'Chưa khởi tạo';
+                    statusText.innerText = 'Not initialized';
                     statusText.className = 'ml-2 font-medium text-slate-300';
                     document.getElementById('statusDot').className = 'status-dot bg-slate-500';
                     document.getElementById('logoutBtn').classList.add('hidden');
@@ -215,21 +215,21 @@
                 const currentState = statusData.status || statusData.state || statusData.statusSession;
 
                 if (currentState === 'CONNECTED') {
-                    statusText.innerText = 'Đã Kết Nối';
+                    statusText.innerText = 'Connected';
                     statusText.className = 'ml-2 font-medium text-emerald-400';
                     statusDot.className = 'status-dot pulse-green';
                     qrContainer.classList.add('hidden');
                     placeholder.classList.remove('hidden');
-                    placeholder.innerText = '✓ Đã Kết Nối';
-                    instruction.innerText = 'Tài khoản của bạn đã sẵn sàng!';
+                    placeholder.innerText = '✓ Connected';
+                    instruction.innerText = 'Your account is ready!';
                     logoutBtn.classList.remove('hidden');
                     stopPollingStatus();
                 } else if (currentState === 'INITIALIZING' || currentState === 'STARTING') {
-                    statusText.innerText = 'Đang khởi tạo...';
+                    statusText.innerText = 'Initializing...';
                     statusDot.className = 'status-dot bg-blue-500';
                     logoutBtn.classList.add('hidden');
                 } else if (currentState === 'QRCODE' || currentState === 'DISCONNECTED') {
-                    statusText.innerText = 'Đang chờ quét mã...';
+                    statusText.innerText = 'Waiting for QR scan...';
                     statusDot.className = 'status-dot bg-yellow-500';
                     logoutBtn.classList.add('hidden');
 
@@ -242,11 +242,11 @@
                         document.getElementById('qrImage').src = qrSrc;
                         qrContainer.classList.remove('hidden');
                         placeholder.classList.add('hidden');
-                        instruction.innerText = 'Hãy quét mã QR bằng WhatsApp trên điện thoại';
+                        instruction.innerText = 'Please scan the QR code with WhatsApp on your phone';
                     }
                 } else {
                     // Other states (CLOSED, etc.)
-                    statusText.innerText = 'Chưa kết nối (' + currentState + ')';
+                    statusText.innerText = 'Disconnected (' + currentState + ')';
                     statusText.className = 'ml-2 font-medium text-slate-300';
                     statusDot.className = 'status-dot bg-slate-500';
                     logoutBtn.classList.add('hidden');
@@ -257,7 +257,7 @@
         }
 
         async function logoutSession() {
-            if (!confirm('Bạn có chắc chắn muốn đăng xuất và đóng session này?')) return;
+            if (!confirm('Are you sure you want to logout and close this session?')) return;
 
             const session = document.getElementById('sessionName').value;
             const base_url = document.getElementById('baseUrl').value;
@@ -276,19 +276,19 @@
                 console.log('Logout Result:', result);
 
                 // Reset UI
-                document.getElementById('statusText').innerText = 'Đã đăng xuất';
+                document.getElementById('statusText').innerText = 'Logged out';
                 document.getElementById('statusText').className = 'ml-2 font-medium text-slate-300';
                 document.getElementById('statusDot').className = 'status-dot bg-slate-500';
                 document.getElementById('logoutBtn').classList.add('hidden');
                 document.getElementById('qrContainer').classList.add('hidden');
                 document.getElementById('loadingPlaceholder').classList.remove('hidden');
-                document.getElementById('loadingPlaceholder').innerText = 'Chưa có mã QR';
-                document.getElementById('instruction').innerText = 'Nhập thông tin và nhấn "Khởi Tạo" để lấy mã QR';
+                document.getElementById('loadingPlaceholder').innerText = 'No QR code yet';
+                document.getElementById('instruction').innerText = 'Enter info and press "Initialize" to get QR code';
 
-                alert('Đã đăng xuất thành công!');
+                alert('Logged out successfully!');
             } catch (e) {
                 console.error('Logout error:', e);
-                alert('Có lỗi khi đăng xuất: ' + e.message);
+                alert('Error logging out: ' + e.message);
             }
         }
 

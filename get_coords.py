@@ -17,26 +17,26 @@ def save_config(config):
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 def main():
-    print("=== Công cụ lấy tọa độ & Lưu cấu hình ===")
+    print("=== Coordinate Capture & Config Tool ===")
     
     config = load_config()
     
-    # Nhập tên vùng
-    region_name = input("\nNhập tên cho vùng này (VD: Số dư, Mã GD...): ").strip()
+    # Input region name
+    region_name = input("\nEnter name for this region (e.g., Balance, Transaction ID...): ").strip()
     if not region_name:
         region_name = f"Region_{len(config['regions']) + 1}"
 
-    # Lấy điểm 1
-    input(f"\n--- Bước 1: Lấy tọa độ GÓC TRÊN BÊN TRÁI cho '{region_name}' --- \nDi chuyển chuột đến vị trí và nhấn ENTER tại đây...")
+    # Get Point 1
+    input(f"\n--- Step 1: Capture TOP-LEFT coordinate for '{region_name}' --- \nMove mouse to position and press ENTER here...")
     x1, y1 = pyautogui.position()
-    print(f">> Đã chốt Điểm 1: X={x1}, Y={y1}")
+    print(f">> Point 1 set: X={x1}, Y={y1}")
     
-    # Lấy điểm 2
-    input(f"\n--- Bước 2: Lấy tọa độ GÓC DƯỚI BÊN PHẢI cho '{region_name}' --- \nDi chuyển chuột đến vị trí và nhấn ENTER tại đây...")
+    # Get Point 2
+    input(f"\n--- Step 2: Capture BOTTOM-RIGHT coordinate for '{region_name}' --- \nMove mouse to position and press ENTER here...")
     x2, y2 = pyautogui.position()
-    print(f">> Đã chốt Điểm 2: X={x2}, Y={y2}")
+    print(f">> Point 2 set: X={x2}, Y={y2}")
     
-    # Tính toán
+    # Calculate
     width = abs(x2 - x1)
     height = abs(y2 - y1)
     x = min(x1, x2)
@@ -50,17 +50,17 @@ def main():
         "height": int(height)
     }
     
-    # Cập nhật config
+    # Update config
     config['regions'].append(new_region)
     save_config(config)
     
     print("\n" + "="*40)
-    print(f"ĐÃ LƯU THÀNH CÔNG VÙNG: '{region_name}'")
+    print(f"REGION SAVED SUCCESSFULLY: '{region_name}'")
     print(json.dumps(new_region, indent=4, ensure_ascii=False))
-    print(f"Toàn bộ cấu hình đã được cập nhật vào {CONFIG_FILE}")
+    print(f"All configuration has been updated in {CONFIG_FILE}")
     print("="*40)
     
-    choice = input("\nBạn có muốn lấy thêm vùng khác không? (y/n): ").lower()
+    choice = input("\nDo you want to capture another region? (y/n): ").lower()
     if choice == 'y':
         main()
 
@@ -68,4 +68,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nĐã thoát.")
+        print("\nExited.")
