@@ -386,6 +386,11 @@ def job(is_test=False):
             
             # --- Validation Logic ---
             title_text = ocr_res.get("Title", "").lower()
+            dc = ocr_res.get("DC", "").strip()
+            aws = ocr_res.get("AWS", "").strip()
+            tap = ocr_res.get("TAP", "").strip()
+
+            # 1. Validate Title
             if "overall index" not in title_text:
                 log(f"Stop sending: 'Overall Index' not found in Title (found '{title_text}').", "ERROR")
                 log("Screenshot is incorrect. Clearing saved window to reselect on next attempt.", "WARNING")
@@ -393,13 +398,17 @@ def job(is_test=False):
                 SESSION_HWND = None
                 return False
 
-            log("'Overall Index' confirmed successfully. Proceeding to send report...", "SUCCESS")
+            # 2. Validate Data Values (DC, AWS, TAP)
+            if not dc or not aws or not tap:
+                log(f"Stop sending: Missing or unrecognized data (DC='{dc}', AWS='{aws}', TAP='{tap}').", "ERROR")
+                log("One or more values could not be identified. Clearing saved window to reselect on next attempt.", "WARNING")
+                global SESSION_HWND
+                SESSION_HWND = None
+                return False
+
+            log("'Overall Index' and data values confirmed. Proceeding to send report...", "SUCCESS")
 
             # Format custom message
-            dc = ocr_res.get("DC", "N/A")
-            aws = ocr_res.get("AWS", "N/A")
-            tap = ocr_res.get("TAP", "N/A")
-            
             caption = (
                 f"BC BLĐ: Hiện tại {dc} TB đang hoạt động, "
                 f"tốc độ gió {aws} m/s, "
