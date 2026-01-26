@@ -362,7 +362,7 @@ def cleanup_old_screenshots():
     if count > 0: log(f"Deleted {count} old screenshots.", "SUCCESS")
 
 def job(is_test=False):
-    global CONFIG
+    global CONFIG, SESSION_HWND
     log("="*40, "INFO")
     log("Starting scheduled job...", "ACTION")
     
@@ -394,7 +394,6 @@ def job(is_test=False):
             if "overall index" not in title_text:
                 log(f"Stop sending: 'Overall Index' not found in Title (found '{title_text}').", "ERROR")
                 log("Screenshot is incorrect. Clearing saved window to reselect on next attempt.", "WARNING")
-                global SESSION_HWND
                 SESSION_HWND = None
                 return False
 
@@ -402,7 +401,6 @@ def job(is_test=False):
             if not dc or not aws or not tap:
                 log(f"Stop sending: Missing or unrecognized data (DC='{dc}', AWS='{aws}', TAP='{tap}').", "ERROR")
                 log("One or more values could not be identified. Clearing saved window to reselect on next attempt.", "WARNING")
-                global SESSION_HWND
                 SESSION_HWND = None
                 return False
 
