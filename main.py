@@ -361,7 +361,7 @@ def cleanup_old_screenshots():
             count += 1
     if count > 0: log(f"Deleted {count} old screenshots.", "SUCCESS")
 
-def job(is_test=False):
+def job(is_test=False, override_hour=None):
     global CONFIG, SESSION_HWND
     log("="*40, "INFO")
     log("Starting scheduled job...", "ACTION")
@@ -410,8 +410,21 @@ def job(is_test=False):
             caption = (
                 f"BC BLĐ: Hiện tại {dc} TB đang hoạt động, "
                 f"tốc độ gió {aws} m/s, "
-                f"công suất phát {tap} MW"
+                f"công suất phát {tap} MW."
             )
+
+            # Determine current hour (allow override for testing)
+            current_hour = override_hour if override_hour is not None else datetime.now().hour
+
+            # Additional logic for 22h report
+            if current_hour == 22:
+                deg = ocr_res.get("DEG", "").strip()
+                if not deg:
+                    log("Stop sending: 'DEG' value not found or empty at 22:00.", "ERROR")
+                    log("DEG is required for the 22:00 report. Clearing saved window to reselect.", "WARNING")
+                    SESSION_HWND = None
+                    return False
+                caption += f" Sản lượng đầu cực đến 22h đạt {deg} MWh."
             
             # Always send the report, even in test mode
             client = WPPConnectClient(CONFIG['wpp_base_url'], CONFIG['wpp_session'], CONFIG['wpp_secret_key'])
@@ -437,11 +450,15 @@ def job(is_test=False):
 # --- Main Logic ---
 if __name__ == "__main__":
     if "--test" in sys.argv:
-        log("Running in TEST mode with auto-retry...", "ACTION")
+        log("Running in NORMAL TEST mode with auto-retry...", "ACTION")
         while True:
-            success = job(is_test=True)
-            if success:
-                break
+            if job(is_test=True): break
+            log("Test run failed. Retrying in 10 seconds...", "WARNING")
+            time.sleep(10)
+    elif "--test-22h" in sys.argv:
+        log("Running in 22:00 TEST mode with auto-retry...", "ACTION")
+        while True:
+            if job(is_test=True, override_hour=22): break
             log("Test run failed. Retrying in 10 seconds...", "WARNING")
             time.sleep(10)
     else:
