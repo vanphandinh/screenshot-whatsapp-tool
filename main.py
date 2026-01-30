@@ -306,6 +306,7 @@ def perform_ocr(screenshot, timestamp_str):
     EasyOCR Implementation with conditional allowlist:
     - Title region: Alphanumeric (to capture "Overall Index")
     - Other regions: Numeric only (0-9 and .)
+    - F and M regions: Special handling for small single-digit regions
     """
     results = {}
     log("Starting EasyOCR Analysis...", "OCR")
@@ -313,31 +314,46 @@ def perform_ocr(screenshot, timestamp_str):
     for region in CONFIG['regions']:
         name, x, y, w, h = region['name'], region['x'], region['y'], region['width'], region['height']
         is_title = "title" in name.lower()
+        is_single_digit = name.lower() in ['f', 'm']  # Special handling for F and M regions
         
         # 1. Take initial crop
         roi_pil = screenshot.crop((x, y, x + w, y + h))
         
-        # 2. Convert to Grayscale & 3x Upscale
+        # 2. Convert to Grayscale
         gray_pil = roi_pil.convert('L')
-        final_pil = gray_pil.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
         
-        # 3. Contrast Enhancement
+        # 3. Resize based on region type
+        if is_single_digit:
+            # For F and M: use 10x upscale to help OCR recognize single digits
+            final_pil = gray_pil.resize((w * 10, h * 10), Image.Resampling.LANCZOS)
+        else:
+            # For other regions: use 3x upscale
+            final_pil = gray_pil.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
+        
+        # 4. Contrast Enhancement (stronger for single digits)
         enhancer = ImageEnhance.Contrast(final_pil)
-        final_pil = enhancer.enhance(2.5)
+        if is_single_digit:
+            final_pil = enhancer.enhance(3.0)  # Higher contrast for small digits
+        else:
+            final_pil = enhancer.enhance(2.5)
         
-        # 4. Save debug
+        # 5. Save debug
         debug_name = f"debug_{name.replace(' ', '_')}_{timestamp_str}.png"
         debug_path = os.path.join(SCREENSHOT_DIR, debug_name)
         final_pil.save(debug_path)
         
-        # 5. Convert to format EasyOCR expects
+        # 6. Convert to format EasyOCR expects
         img_np = np.array(final_pil)
         
-        # 6. EasyOCR Recognition with dynamic allowlist
+        # 7. EasyOCR Recognition with dynamic allowlist
         if is_title:
             # For Title, we allow letters to capture "Overall Index"
             ocr_results = READER.readtext(img_np, detail=0)
             text = " ".join(ocr_results).strip()
+        elif is_single_digit:
+            # For F and M: use single digit allowlist with 10x upscale and contrast
+            ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789')
+            text = "".join(ocr_results).strip()
         else:
             # For data, we restrict to numbers and dots
             ocr_results = READER.readtext(img_np, detail=0, allowlist='0123456789.')
