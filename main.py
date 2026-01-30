@@ -389,6 +389,8 @@ def job(is_test=False, override_hour=None):
             dc = ocr_res.get("DC", "").strip()
             aws = ocr_res.get("AWS", "").strip()
             tap = ocr_res.get("TAP", "").strip()
+            f = ocr_res.get("F", "").strip()
+            m = ocr_res.get("M", "").strip()
 
             # 1. Validate Title
             if "overall index" not in title_text:
@@ -404,11 +406,18 @@ def job(is_test=False, override_hour=None):
                 SESSION_HWND = None
                 return False
 
-            log("'Overall Index' and data values confirmed. Proceeding to send report...", "SUCCESS")
+            # 3. Set default values for F and M (if not found, default to 0)
+            f_val = int(f) if f else 0
+            m_val = int(m) if m else 0
+            dc_val = int(dc) if dc else 0
+            active = dc_val - f_val - m_val
+
+            log(f"'Overall Index' and data values confirmed. Proceeding to send report...", "SUCCESS")
+            log(f"Calculated active devices: {active} (DC={dc_val}, F={f_val}, M={m_val})", "DEBUG")
 
             # Format custom message
             caption = (
-                f"BC BLĐ: Hiện tại {dc} TB đang hoạt động, "
+                f"BC BLĐ: Hiện tại {active} TB đang hoạt động, "
                 f"tốc độ gió {aws} m/s, "
                 f"công suất phát {tap} MW."
             )
